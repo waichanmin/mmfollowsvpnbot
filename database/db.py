@@ -342,6 +342,38 @@ class Database:
             )
             return cursor.rowcount == 1
 
+    def approve_order_with_key(
+        self,
+        order_id: int,
+        admin_id: int,
+        user_id: int,
+        outline_key_id: str,
+        access_url: str,
+        key_name: str,
+        approved_at: str,
+        expires_at: str,
+    ) -> bool:
+        with self.transaction() as conn:
+            cursor = conn.execute(
+                '''
+                UPDATE orders
+                SET status = 'approved', approved_at = ?, admin_id = ?
+                WHERE id = ? AND status = 'pending'
+                ''',
+                (approved_at, admin_id, order_id),
+            )
+            if cursor.rowcount != 1:
+                return False
+
+            conn.execute(
+                '''
+                INSERT INTO vpn_keys (user_id, order_id, outline_key_id, access_url, key_name, created_at, expires_at, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
+                ''',
+                (user_id, order_id, outline_key_id, access_url, key_name, approved_at, expires_at),
+            )
+            return True
+
     def reject_order(self, order_id: int, admin_id: int) -> bool:
         with self.transaction() as conn:
             cursor = conn.execute(

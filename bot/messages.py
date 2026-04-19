@@ -47,7 +47,8 @@ def admin_order_message(order: dict, currency: str) -> str:
         f"Plan: <b>{order['plan_name']}</b>\n"
         f"Amount: <b>{order['amount']} {currency}</b>\n"
         f"Submitted: <code>{order['created_at']}</code>\n"
-        f"Status: <b>{order['status'].upper()}</b>"
+        f"Status: <b>{order['status'].upper()}</b>\n\n"
+        '👇 Please use buttons below to approve or reject.'
     )
 
 
@@ -96,7 +97,7 @@ def help_message() -> str:
         '/help - Show this help\n\n'
         'Admin commands:\n'
         '/admin, /plans, /addplan, /editplan, /deleteplan, /payments, '
-        '/addpayment, /editpayment, /deletepayment, /pending, /users, /sales, /broadcast'
+        '/addpayment, /editpayment, /deletepayment, /pending, /users, /sales, /outlinecheck, /broadcast'
     )
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from database.db import Database
 from services.outline import OutlineAPIError, OutlineKey, OutlineService
@@ -10,9 +11,18 @@ logger = logging.getLogger(__name__)
 
 
 class OrderService:
-    def __init__(self, db: Database, outline_service: OutlineService) -> None:
+    def __init__(self, db: Database, outline_service: OutlineService, default_timezone: str = 'UTC') -> None:
         self.db = db
         self.outline_service = outline_service
+        self.default_timezone = default_timezone
+
+    def _current_time(self) -> datetime:
+        try:
+            tz = ZoneInfo(self.default_timezone)
+        except Exception:
+            logger.warning('Invalid timezone %s, falling back to UTC', self.default_timezone)
+            tz = timezone.utc
+        return datetime.now(tz).replace(microsecond=0)
 
     def generate_key_name(self, telegram_id: int, username: str | None, plan_name: str, expires_at: datetime) -> str:
         safe_username = username or f'User_{telegram_id}'
@@ -26,13 +36,11 @@ class OrderService:
         if order['status'] != 'pending':
             raise ValueError('Only pending orders can be approved')
 
-        approved = self.db.approve_order(order_id=order_id, admin_id=admin_id)
-        if not approved:
-            raise ValueError('Order was already processed by another admin')
-
-        approved_at = datetime.now(timezone.utc).replace(microsecond=0)
+        approved_at = self._current_time()
         expires_at = approved_at + timedelta(days=int(order['duration_days']))
         key_name = self.generate_key_name(order['telegram_id'], order['username'], order['plan_name'], expires_at)
+        approved_at_iso = approved_at.isoformat()
+        expires_at_iso = expires_at.isoformat()
 
         try:
             outline_key = await self.outline_service.create_access_key(key_name)
@@ -43,15 +51,20 @@ class OrderService:
             logger.exception('Unexpected error while creating Outline key for order %s', order_id)
             raise
 
-        self.db.add_vpn_key(
-            user_id=int(order['user_id']),
+        approved = self.db.approve_order_with_key(
             order_id=order_id,
+            admin_id=admin_id,
+            user_id=int(order['user_id']),
             outline_key_id=outline_key.key_id,
             access_url=outline_key.access_url,
             key_name=outline_key.name,
-            created_at=approved_at.isoformat(),
-            expires_at=expires_at.isoformat(),
+            approved_at=approved_at_iso,
+            expires_at=expires_at_iso,
         )
+        if not approved:
+            await self.outline_service.delete_access_key(outline_key.key_id)
+            raise ValueError('Order was already processed by another admin')
+
         order = self.db.get_order_full(order_id)
         return dict(order), outline_key, approved_at.date().isoformat(), expires_at.date().isoformat()
 

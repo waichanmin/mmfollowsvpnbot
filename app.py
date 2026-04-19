@@ -43,7 +43,7 @@ def build_application() -> Application:
 
     db = Database(settings.database_path)
     outline_service = OutlineService(settings.outline_api_url, settings.outline_api_cert_sha256)
-    order_service = OrderService(db, outline_service)
+    order_service = OrderService(db, outline_service, settings.default_timezone)
 
     application = Application.builder().token(settings.bot_token).build()
     application.bot_data['settings'] = settings
@@ -67,6 +67,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler('pending', admin.pending_command))
     application.add_handler(CommandHandler('users', admin.users_command))
     application.add_handler(CommandHandler('sales', admin.sales_command))
+    application.add_handler(CommandHandler('outlinecheck', admin.outline_check_command))
     application.add_handler(CommandHandler('broadcast', admin.broadcast_command))
 
     application.add_handler(CallbackQueryHandler(user.show_plans, pattern=r'^user:view_plans$'))
