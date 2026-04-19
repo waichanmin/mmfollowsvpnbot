@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from database.db import Database
 from services.outline import OutlineAPIError, OutlineKey, OutlineService
@@ -10,9 +11,18 @@ logger = logging.getLogger(__name__)
 
 
 class OrderService:
-    def __init__(self, db: Database, outline_service: OutlineService) -> None:
+    def __init__(self, db: Database, outline_service: OutlineService, default_timezone: str = 'UTC') -> None:
         self.db = db
         self.outline_service = outline_service
+        self.default_timezone = default_timezone
+
+    def _current_time(self) -> datetime:
+        try:
+            tz = ZoneInfo(self.default_timezone)
+        except Exception:
+            logger.warning('Invalid timezone %s, falling back to UTC', self.default_timezone)
+            tz = timezone.utc
+        return datetime.now(tz).replace(microsecond=0)
 
     def generate_key_name(self, telegram_id: int, username: str | None, plan_name: str, expires_at: datetime) -> str:
         safe_username = username or f'User_{telegram_id}'
@@ -30,7 +40,7 @@ class OrderService:
         if not approved:
             raise ValueError('Order was already processed by another admin')
 
-        approved_at = datetime.now(timezone.utc).replace(microsecond=0)
+        approved_at = self._current_time()
         expires_at = approved_at + timedelta(days=int(order['duration_days']))
         key_name = self.generate_key_name(order['telegram_id'], order['username'], order['plan_name'], expires_at)
 
