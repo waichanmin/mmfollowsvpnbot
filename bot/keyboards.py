@@ -33,6 +33,10 @@ def admin_menu_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton('📌 Pending', callback_data='admin:pending_list')],
             [InlineKeyboardButton('📦 Plans', callback_data='admin:list_plans')],
             [InlineKeyboardButton('💳 Payments', callback_data='admin:list_payments')],
+            [
+                InlineKeyboardButton('➕ Add Payment', callback_data='admin:add_payment'),
+                InlineKeyboardButton('✏️ Edit Payment', callback_data='admin:edit_payment'),
+            ],
             [InlineKeyboardButton('📊 Sales', callback_data='admin:sales_stats')],
             [InlineKeyboardButton('👥 Users', callback_data='admin:user_stats')],
         ]
