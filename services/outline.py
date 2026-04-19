@@ -84,3 +84,18 @@ class OutlineService:
             except aiohttp.ClientError as exc:
                 logger.exception('Network error while creating Outline key')
                 raise OutlineAPIError('Network error while talking to Outline server') from exc
+
+    async def delete_access_key(self, key_id: str) -> None:
+        if not self.enabled:
+            return
+        delete_url = f'{self.api_url}/access-keys/{key_id}'
+        timeout = aiohttp.ClientTimeout(total=20)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            try:
+                async with session.delete(delete_url, ssl=self._ssl_context()) as response:
+                    await self._check_cert_fingerprint(response)
+                    if response.status >= 400:
+                        text = await response.text()
+                        logger.warning('Failed to delete Outline key %s: %s %s', key_id, response.status, text)
+            except Exception:
+                logger.exception('Failed to cleanup Outline key %s', key_id)

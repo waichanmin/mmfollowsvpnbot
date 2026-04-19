@@ -278,7 +278,8 @@ async def admin_callback_router(update: Update, context: ContextTypes.DEFAULT_TY
                 caption=(
                     messages.admin_order_message(order, settings.default_currency)
                     + f'\n\n✅ Approved on <code>{approved_date}</code>'
-                    + f'\n🔑 Key issued: <code>{outline_key.access_url}</code>'
+                    + f'\n👤 Approved by: <code>{query.from_user.id}</code>'
+                    + f'\n🔑 Key issued: <code>{outline_key.key_id}</code>'
                     + f'\n📅 Expires: <code>{expiry_date}</code>'
                 ),
                 parse_mode='HTML',

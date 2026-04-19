@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from telegram import InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from bot import keyboards, messages
@@ -82,7 +82,9 @@ async def plan_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await query.edit_message_text(
         messages.format_plan_details(dict(plan), settings.default_currency, payment_text),
         parse_mode='HTML',
-        reply_markup=InlineKeyboardMarkup([[keyboards.InlineKeyboardButton('⬅️ Plans', callback_data='user:view_plans')]]) if False else None,
+        reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton('⬅️ Plans', callback_data='user:view_plans')]]
+        ),
     )
 
 
