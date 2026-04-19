@@ -275,7 +275,12 @@ async def admin_callback_router(update: Update, context: ContextTypes.DEFAULT_TY
                 parse_mode='HTML',
             )
             await query.edit_message_caption(
-                caption=messages.admin_order_message(order, settings.default_currency) + '\n\n✅ Approved',
+                caption=(
+                    messages.admin_order_message(order, settings.default_currency)
+                    + f'\n\n✅ Approved on <code>{approved_date}</code>'
+                    + f'\n🔑 Key issued: <code>{outline_key.access_url}</code>'
+                    + f'\n📅 Expires: <code>{expiry_date}</code>'
+                ),
                 parse_mode='HTML',
             )
         else:
