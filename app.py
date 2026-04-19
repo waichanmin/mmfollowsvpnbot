@@ -43,7 +43,7 @@ def build_application() -> Application:
 
     db = Database(settings.database_path)
     outline_service = OutlineService(settings.outline_api_url, settings.outline_api_cert_sha256)
-    order_service = OrderService(db, outline_service)
+    order_service = OrderService(db, outline_service, settings.default_timezone)
 
     application = Application.builder().token(settings.bot_token).build()
     application.bot_data['settings'] = settings
