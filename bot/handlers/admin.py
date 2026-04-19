@@ -105,17 +105,27 @@ async def list_payments_command(update: Update, context: ContextTypes.DEFAULT_TY
 @admin_only
 async def add_payment_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     context.user_data[PAYMENT_DRAFT] = {'mode': 'add'}
-    await update.effective_message.reply_text(
-        'Send payment method in this format:\n<method>|<account_name>|<account_number>|<extra_info>'
-    )
+    if update.effective_message:
+        await update.effective_message.reply_text(
+            'Send payment method in this format:\n<method>|<account_name>|<account_number>|<extra_info>'
+        )
+    elif update.callback_query and update.callback_query.message:
+        await update.callback_query.message.reply_text(
+            'Send payment method in this format:\n<method>|<account_name>|<account_number>|<extra_info>'
+        )
 
 
 @admin_only
 async def edit_payment_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     context.user_data[PAYMENT_DRAFT] = {'mode': 'edit'}
-    await update.effective_message.reply_text(
-        'Send payment update in this format:\n<id>|<method>|<account_name>|<account_number>|<is_active:0_or_1>|<extra_info>'
-    )
+    if update.effective_message:
+        await update.effective_message.reply_text(
+            'Send payment update in this format:\n<id>|<method>|<account_name>|<account_number>|<is_active:0_or_1>|<extra_info>'
+        )
+    elif update.callback_query and update.callback_query.message:
+        await update.callback_query.message.reply_text(
+            'Send payment update in this format:\n<id>|<method>|<account_name>|<account_number>|<is_active:0_or_1>|<extra_info>'
+        )
 
 
 @admin_only
@@ -133,7 +143,16 @@ async def delete_payment_command(update: Update, context: ContextTypes.DEFAULT_T
 async def pending_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     db = context.application.bot_data['db']
     orders = [dict(row) for row in db.get_pending_orders()]
+    if not update.effective_message:
+        return
     await update.effective_message.reply_text(messages.pending_summary(orders), parse_mode='HTML')
+    for order in orders:
+        await update.effective_message.reply_photo(
+            photo=order['screenshot_file_id'],
+            caption=messages.admin_order_message(order, context.application.bot_data['settings'].default_currency),
+            parse_mode='HTML',
+            reply_markup=keyboards.admin_order_actions(int(order['id'])),
+        )
 
 
 @admin_only
@@ -244,13 +263,33 @@ async def admin_callback_router(update: Update, context: ContextTypes.DEFAULT_TY
     if data == 'admin:pending_list':
         orders = [dict(row) for row in db.get_pending_orders()]
         await query.answer()
-        await query.edit_message_text(messages.pending_summary(orders), parse_mode='HTML', reply_markup=keyboards.admin_menu_keyboard())
+        await query.edit_message_text(
+            messages.pending_summary(orders),
+            parse_mode='HTML',
+            reply_markup=keyboards.admin_menu_keyboard(),
+        )
+        for order in orders:
+            await context.bot.send_photo(
+                chat_id=query.message.chat_id,
+                photo=order['screenshot_file_id'],
+                caption=messages.admin_order_message(order, settings.default_currency),
+                parse_mode='HTML',
+                reply_markup=keyboards.admin_order_actions(int(order['id'])),
+            )
         return
     if data == 'admin:list_plans':
         await list_plans_command(update, context)
         return
     if data == 'admin:list_payments':
         await list_payments_command(update, context)
+        return
+    if data == 'admin:add_payment':
+        await query.answer()
+        await add_payment_command(update, context)
+        return
+    if data == 'admin:edit_payment':
+        await query.answer()
+        await edit_payment_command(update, context)
         return
     if data == 'admin:sales_stats':
         await sales_command(update, context)
@@ -275,7 +314,13 @@ async def admin_callback_router(update: Update, context: ContextTypes.DEFAULT_TY
                 parse_mode='HTML',
             )
             await query.edit_message_caption(
-                caption=messages.admin_order_message(order, settings.default_currency) + '\n\n✅ Approved',
+                caption=(
+                    messages.admin_order_message(order, settings.default_currency)
+                    + f'\n\n✅ Approved on <code>{approved_date}</code>'
+                    + f'\n👤 Approved by: <code>{query.from_user.id}</code>'
+                    + f'\n🔑 Key issued: <code>{outline_key.key_id}</code>'
+                    + f'\n📅 Expires: <code>{expiry_date}</code>'
+                ),
                 parse_mode='HTML',
             )
         else:
@@ -294,7 +339,13 @@ async def admin_callback_router(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer('Outline API failed', show_alert=True)
         await context.bot.send_message(
             chat_id=query.from_user.id,
-            text=f'Failed to generate Outline key for order #{order_id}: {exc}',
+            text=(
+                f'Failed to generate Outline key for order #{order_id}: {exc}\n\n'
+                'Please verify:\n'
+                '1) OUTLINE_API_URL is reachable from server\n'
+                '2) OUTLINE_API_CERT_SHA256 matches current Outline cert\n'
+                '3) Outline Manager API is up'
+            ),
         )
     except ValueError as exc:
         await query.answer(str(exc), show_alert=True)
