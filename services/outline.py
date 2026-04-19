@@ -43,7 +43,10 @@ class OutlineService:
         return context
 
     async def _check_cert_fingerprint(self, response: aiohttp.ClientResponse) -> None:
-        ssl_obj = response.connection.transport.get_extra_info('ssl_object')
+        connection = response.connection
+        if connection is None or connection.transport is None:
+            raise OutlineAPIError('Could not read TLS connection information from Outline response')
+        ssl_obj = connection.transport.get_extra_info('ssl_object')
         if ssl_obj is None:
             raise OutlineAPIError('Missing SSL object while validating Outline certificate')
         der_cert = ssl_obj.getpeercert(binary_form=True)
@@ -88,7 +91,9 @@ class OutlineService:
                 except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                     if attempt == max_attempts:
                         logger.exception('Network error while creating Outline key (attempt %s/%s)', attempt, max_attempts)
-                        raise OutlineAPIError('Network error while talking to Outline server') from exc
+                        raise OutlineAPIError(
+                            f'Network error while talking to Outline server: {exc.__class__.__name__}'
+                        ) from exc
                     logger.warning(
                         'Outline create key network error (attempt %s/%s): %s',
                         attempt,
@@ -96,6 +101,9 @@ class OutlineService:
                         exc,
                     )
                     await asyncio.sleep(attempt)
+                except Exception as exc:
+                    logger.exception('Unexpected Outline client error while creating key')
+                    raise OutlineAPIError(f'Unexpected Outline client error: {exc}') from exc
 
     async def delete_access_key(self, key_id: str) -> None:
         if not self.enabled:

@@ -339,7 +339,13 @@ async def admin_callback_router(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer('Outline API failed', show_alert=True)
         await context.bot.send_message(
             chat_id=query.from_user.id,
-            text=f'Failed to generate Outline key for order #{order_id}: {exc}',
+            text=(
+                f'Failed to generate Outline key for order #{order_id}: {exc}\n\n'
+                'Please verify:\n'
+                '1) OUTLINE_API_URL is reachable from server\n'
+                '2) OUTLINE_API_CERT_SHA256 matches current Outline cert\n'
+                '3) Outline Manager API is up'
+            ),
         )
     except ValueError as exc:
         await query.answer(str(exc), show_alert=True)
