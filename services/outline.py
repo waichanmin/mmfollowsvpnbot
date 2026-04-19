@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import ssl
@@ -56,34 +57,45 @@ class OutlineService:
 
         create_url = f'{self.api_url}/access-keys'
         rename_url_template = f'{self.api_url}/access-keys/{{key_id}}/name'
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            timeout = aiohttp.ClientTimeout(total=20)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                try:
+                    async with session.post(create_url, ssl=self._ssl_context()) as response:
+                        await self._check_cert_fingerprint(response)
+                        if response.status >= 400:
+                            text = await response.text()
+                            raise OutlineAPIError(f'Outline create key failed: {response.status} {text}')
+                        payload = await response.json()
 
-        timeout = aiohttp.ClientTimeout(total=20)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            try:
-                async with session.post(create_url, ssl=self._ssl_context()) as response:
-                    await self._check_cert_fingerprint(response)
-                    if response.status >= 400:
-                        text = await response.text()
-                        raise OutlineAPIError(f'Outline create key failed: {response.status} {text}')
-                    payload = await response.json()
+                    key_id = str(payload['id'])
+                    access_url = str(payload['accessUrl'])
 
-                key_id = str(payload['id'])
-                access_url = str(payload['accessUrl'])
+                    async with session.put(
+                        rename_url_template.format(key_id=key_id),
+                        json={'name': key_name},
+                        ssl=self._ssl_context(),
+                    ) as response:
+                        await self._check_cert_fingerprint(response)
+                        if response.status >= 400:
+                            text = await response.text()
+                            logger.warning('Outline key created but rename failed: %s %s', response.status, text)
 
-                async with session.put(
-                    rename_url_template.format(key_id=key_id),
-                    json={'name': key_name},
-                    ssl=self._ssl_context(),
-                ) as response:
-                    await self._check_cert_fingerprint(response)
-                    if response.status >= 400:
-                        text = await response.text()
-                        logger.warning('Outline key created but rename failed: %s %s', response.status, text)
-
-                return OutlineKey(key_id=key_id, access_url=access_url, name=key_name)
-            except aiohttp.ClientError as exc:
-                logger.exception('Network error while creating Outline key')
-                raise OutlineAPIError('Network error while talking to Outline server') from exc
+                    return OutlineKey(key_id=key_id, access_url=access_url, name=key_name)
+                except OutlineAPIError:
+                    raise
+                except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                    if attempt == max_attempts:
+                        logger.exception('Network error while creating Outline key (attempt %s/%s)', attempt, max_attempts)
+                        raise OutlineAPIError('Network error while talking to Outline server') from exc
+                    logger.warning(
+                        'Outline create key network error (attempt %s/%s): %s',
+                        attempt,
+                        max_attempts,
+                        exc,
+                    )
+                    await asyncio.sleep(attempt)
 
     async def delete_access_key(self, key_id: str) -> None:
         if not self.enabled:
