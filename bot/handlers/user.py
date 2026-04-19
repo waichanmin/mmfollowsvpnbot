@@ -118,16 +118,40 @@ async def payment_screenshot_received(update: Update, context: ContextTypes.DEFA
     )
     order = dict(db.get_order_full(order_id))
 
-    admin_message = await bot.send_photo(
-        chat_id=settings.admin_chat_id,
-        photo=screenshot_file_id,
-        caption=messages.admin_order_message(order, settings.default_currency),
-        parse_mode='HTML',
-        reply_markup=keyboards.admin_order_actions(order_id),
-    )
-    db.set_order_admin_message(order_id, admin_message.message_id)
+    admin_message = None
+    try:
+        admin_message = await bot.send_photo(
+            chat_id=settings.admin_chat_id,
+            photo=screenshot_file_id,
+            caption=messages.admin_order_message(order, settings.default_currency),
+            parse_mode='HTML',
+            reply_markup=keyboards.admin_order_actions(order_id),
+        )
+    except Exception:
+        logger.exception('Failed to send order %s to admin chat %s', order_id, settings.admin_chat_id)
+        for admin_id in settings.admin_ids:
+            try:
+                sent = await bot.send_photo(
+                    chat_id=admin_id,
+                    photo=screenshot_file_id,
+                    caption=messages.admin_order_message(order, settings.default_currency),
+                    parse_mode='HTML',
+                    reply_markup=keyboards.admin_order_actions(order_id),
+                )
+                if admin_message is None:
+                    admin_message = sent
+            except Exception:
+                logger.exception('Failed to send order %s to admin %s', order_id, admin_id)
 
-    await message.reply_text(messages.payment_submitted_message(), parse_mode='HTML')
+    if admin_message:
+        db.set_order_admin_message(order_id, admin_message.message_id)
+        await message.reply_text(messages.payment_submitted_message(), parse_mode='HTML')
+    else:
+        await message.reply_text(
+            'Payment screenshot saved but failed to notify admin automatically. '
+            'Please contact support.',
+            parse_mode='HTML',
+        )
 
 
 async def my_plan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
