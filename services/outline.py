@@ -105,6 +105,31 @@ class OutlineService:
                     logger.exception('Unexpected Outline client error while creating key')
                     raise OutlineAPIError(f'Unexpected Outline client error: {exc}') from exc
 
+    async def health_check(self) -> str:
+        if not self.enabled:
+            raise OutlineAPIError('Outline integration is not configured')
+
+        url = f'{self.api_url}/access-keys'
+        timeout = aiohttp.ClientTimeout(total=20)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            try:
+                async with session.get(url, ssl=self._ssl_context()) as response:
+                    await self._check_cert_fingerprint(response)
+                    if response.status >= 400:
+                        text = await response.text()
+                        raise OutlineAPIError(f'Outline health check failed: {response.status} {text}')
+                    payload = await response.json()
+                    if not isinstance(payload, dict):
+                        raise OutlineAPIError('Unexpected Outline health check response')
+                    access_keys = payload.get('accessKeys', [])
+                    if not isinstance(access_keys, list):
+                        raise OutlineAPIError('Unexpected Outline accessKeys payload')
+                    return f'Outline OK. Existing keys: {len(access_keys)}'
+            except OutlineAPIError:
+                raise
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                raise OutlineAPIError(f'Outline unreachable: {exc.__class__.__name__}') from exc
+
     async def delete_access_key(self, key_id: str) -> None:
         if not self.enabled:
             return

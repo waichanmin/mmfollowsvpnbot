@@ -188,6 +188,23 @@ async def sales_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 @admin_only
+async def outline_check_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    outline_service = context.application.bot_data['outline_service']
+    if not update.effective_message:
+        return
+    await update.effective_message.reply_text('Checking Outline server...')
+    try:
+        result = await outline_service.health_check()
+        await update.effective_message.reply_text(f'✅ {result}')
+    except OutlineAPIError as exc:
+        await update.effective_message.reply_text(
+            '❌ Outline check failed.\n'
+            f'Reason: {exc}\n\n'
+            'Check URL/network/firewall and certificate fingerprint.'
+        )
+
+
+@admin_only
 async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     context.user_data[BROADCAST_MODE] = True
     await update.effective_message.reply_text('Send the broadcast message text now. /cancel to stop.')

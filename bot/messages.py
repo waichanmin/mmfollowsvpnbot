@@ -97,7 +97,7 @@ def help_message() -> str:
         '/help - Show this help\n\n'
         'Admin commands:\n'
         '/admin, /plans, /addplan, /editplan, /deleteplan, /payments, '
-        '/addpayment, /editpayment, /deletepayment, /pending, /users, /sales, /broadcast'
+        '/addpayment, /editpayment, /deletepayment, /pending, /users, /sales, /outlinecheck, /broadcast'
     )
 
 

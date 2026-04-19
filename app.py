@@ -67,6 +67,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler('pending', admin.pending_command))
     application.add_handler(CommandHandler('users', admin.users_command))
     application.add_handler(CommandHandler('sales', admin.sales_command))
+    application.add_handler(CommandHandler('outlinecheck', admin.outline_check_command))
     application.add_handler(CommandHandler('broadcast', admin.broadcast_command))
 
     application.add_handler(CallbackQueryHandler(user.show_plans, pattern=r'^user:view_plans$'))
