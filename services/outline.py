@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import ssl
 from dataclasses import dataclass
 import aiohttp
 
@@ -30,15 +29,6 @@ class OutlineService:
     def enabled(self) -> bool:
         return bool(self.api_url and self.cert_sha256)
 
-    def _ssl_context(self) -> ssl.SSLContext:
-        context = ssl.create_default_context()
-        # Outline Manager commonly uses a self-signed certificate.
-        # We intentionally disable CA/hostname validation here and enforce trust
-        # via explicit SHA-256 certificate pinning in _check_cert_fingerprint().
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        return context
-
     async def _check_cert_fingerprint(self, response: aiohttp.ClientResponse) -> None:
         connection = response.connection
         if connection is None or connection.transport is None:
@@ -62,7 +52,7 @@ class OutlineService:
             timeout = aiohttp.ClientTimeout(total=20)
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 try:
-                    async with session.post(create_url, ssl=self._ssl_context()) as response:
+                    async with session.post(create_url, ssl=False) as response:
                         await self._check_cert_fingerprint(response)
                         if response.status >= 400:
                             text = await response.text()
@@ -75,7 +65,7 @@ class OutlineService:
                     async with session.put(
                         rename_url_template.format(key_id=key_id),
                         json={'name': key_name},
-                        ssl=self._ssl_context(),
+                        ssl=False,
                     ) as response:
                         await self._check_cert_fingerprint(response)
                         if response.status >= 400:
@@ -110,7 +100,7 @@ class OutlineService:
         timeout = aiohttp.ClientTimeout(total=20)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             try:
-                async with session.get(url, ssl=self._ssl_context()) as response:
+                async with session.get(url, ssl=False) as response:
                     await self._check_cert_fingerprint(response)
                     if response.status >= 400:
                         text = await response.text()
@@ -134,7 +124,7 @@ class OutlineService:
         timeout = aiohttp.ClientTimeout(total=20)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             try:
-                async with session.delete(delete_url, ssl=self._ssl_context()) as response:
+                async with session.delete(delete_url, ssl=False) as response:
                     await self._check_cert_fingerprint(response)
                     if response.status >= 400:
                         text = await response.text()
