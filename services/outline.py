@@ -47,11 +47,23 @@ class OutlineService:
     def __init__(self, api_url: str, cert_sha256: str) -> None:
         self.api_url = api_url.rstrip('/')
         self.cert_sha256 = cert_sha256.strip()
-        self._fingerprint = _build_fingerprint(self.cert_sha256) if self.cert_sha256 else None
+        self._fingerprint = self._build_fingerprint(self.cert_sha256) if self.cert_sha256 else None
 
     @property
     def enabled(self) -> bool:
-        return bool(self.api_url and self._fingerprint)
+        return bool(self.api_url and self.cert_sha256)
+
+    async def _check_cert_fingerprint(self, response: aiohttp.ClientResponse) -> None:
+        connection = response.connection
+        if connection is None or connection.transport is None:
+            raise OutlineAPIError('Could not read TLS connection information from Outline response')
+        ssl_obj = connection.transport.get_extra_info('ssl_object')
+        if ssl_obj is None:
+            raise OutlineAPIError('Missing SSL object while validating Outline certificate')
+        der_cert = ssl_obj.getpeercert(binary_form=True)
+        fingerprint = hashlib.sha256(der_cert).hexdigest().lower()
+        if fingerprint != self.cert_sha256:
+            raise OutlineAPIError('Outline certificate fingerprint mismatch')
 
     async def create_access_key(self, key_name: str) -> OutlineKey:
         if not self.enabled:
@@ -64,7 +76,8 @@ class OutlineService:
             timeout = aiohttp.ClientTimeout(total=20)
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 try:
-                    async with session.post(create_url, ssl=self._fingerprint) as response:
+                    async with session.post(create_url, ssl=False) as response:
+                        await self._check_cert_fingerprint(response)
                         if response.status >= 400:
                             text = await response.text()
                             raise OutlineAPIError(f'Outline create key failed: {response.status} {text}')
@@ -76,7 +89,7 @@ class OutlineService:
                     async with session.put(
                         rename_url_template.format(key_id=key_id),
                         json={'name': key_name},
-                        ssl=self._fingerprint,
+                        ssl=False,
                     ) as response:
                         if response.status >= 400:
                             text = await response.text()
@@ -116,7 +129,8 @@ class OutlineService:
         timeout = aiohttp.ClientTimeout(total=20)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             try:
-                async with session.get(url, ssl=self._fingerprint) as response:
+                async with session.get(url, ssl=False) as response:
+                    await self._check_cert_fingerprint(response)
                     if response.status >= 400:
                         text = await response.text()
                         raise OutlineAPIError(f'Outline health check failed: {response.status} {text}')
@@ -145,7 +159,8 @@ class OutlineService:
         timeout = aiohttp.ClientTimeout(total=20)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             try:
-                async with session.delete(delete_url, ssl=self._fingerprint) as response:
+                async with session.delete(delete_url, ssl=False) as response:
+                    await self._check_cert_fingerprint(response)
                     if response.status >= 400:
                         text = await response.text()
                         logger.warning('Failed to delete Outline key %s: %s %s', key_id, response.status, text)
