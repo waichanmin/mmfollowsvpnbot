@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
+import base64
 import logging
 from dataclasses import dataclass
 import aiohttp
@@ -23,7 +23,8 @@ class OutlineKey:
 class OutlineService:
     def __init__(self, api_url: str, cert_sha256: str) -> None:
         self.api_url = api_url.rstrip('/')
-        self.cert_sha256 = cert_sha256.lower().replace(':', '')
+        self.cert_sha256 = cert_sha256.strip()
+        self._fingerprint = self._build_fingerprint(self.cert_sha256) if self.cert_sha256 else None
 
     @property
     def enabled(self) -> bool:
@@ -67,7 +68,6 @@ class OutlineService:
                         json={'name': key_name},
                         ssl=False,
                     ) as response:
-                        await self._check_cert_fingerprint(response)
                         if response.status >= 400:
                             text = await response.text()
                             logger.warning('Outline key created but rename failed: %s %s', response.status, text)
@@ -75,6 +75,12 @@ class OutlineService:
                     return OutlineKey(key_id=key_id, access_url=access_url, name=key_name)
                 except OutlineAPIError:
                     raise
+                except aiohttp.ServerFingerprintMismatch as exc:
+                    expected = exc.expected.hex()
+                    got = exc.got.hex()
+                    raise OutlineAPIError(
+                        f'Outline certificate fingerprint mismatch: expected {expected}, got {got}'
+                    ) from exc
                 except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                     if attempt == max_attempts:
                         logger.exception('Network error while creating Outline key (attempt %s/%s)', attempt, max_attempts)
@@ -114,6 +120,12 @@ class OutlineService:
                     return f'Outline OK. Existing keys: {len(access_keys)}'
             except OutlineAPIError:
                 raise
+            except aiohttp.ServerFingerprintMismatch as exc:
+                expected = exc.expected.hex()
+                got = exc.got.hex()
+                raise OutlineAPIError(
+                    f'Outline certificate fingerprint mismatch: expected {expected}, got {got}'
+                ) from exc
             except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                 raise OutlineAPIError(f'Outline unreachable: {exc.__class__.__name__}') from exc
 
@@ -129,5 +141,7 @@ class OutlineService:
                     if response.status >= 400:
                         text = await response.text()
                         logger.warning('Failed to delete Outline key %s: %s %s', key_id, response.status, text)
+            except aiohttp.ServerFingerprintMismatch:
+                logger.exception('Failed to cleanup Outline key %s due to certificate fingerprint mismatch', key_id)
             except Exception:
                 logger.exception('Failed to cleanup Outline key %s', key_id)
