@@ -28,30 +28,19 @@ class OutlineService:
 
     @property
     def enabled(self) -> bool:
-        return bool(self.api_url and self._fingerprint)
+        return bool(self.api_url and self.cert_sha256)
 
-    @staticmethod
-    def _build_fingerprint(cert_sha256: str) -> aiohttp.Fingerprint:
-        raw = cert_sha256.strip()
-        lowered = raw.lower()
-        for prefix in ('sha256:', 'sha256/'):
-            if lowered.startswith(prefix):
-                raw = raw[len(prefix):]
-                break
-
-        hex_candidate = raw.replace(':', '').strip()
-        if len(hex_candidate) == 64:
-            try:
-                return aiohttp.Fingerprint(bytes.fromhex(hex_candidate))
-            except ValueError:
-                pass
-
-        # Outline Manager often provides certSha256 as base64.
-        try:
-            decoded = base64.b64decode(raw, validate=True)
-            return aiohttp.Fingerprint(decoded)
-        except Exception as exc:
-            raise OutlineAPIError('OUTLINE_API_CERT_SHA256 format is invalid') from exc
+    async def _check_cert_fingerprint(self, response: aiohttp.ClientResponse) -> None:
+        connection = response.connection
+        if connection is None or connection.transport is None:
+            raise OutlineAPIError('Could not read TLS connection information from Outline response')
+        ssl_obj = connection.transport.get_extra_info('ssl_object')
+        if ssl_obj is None:
+            raise OutlineAPIError('Missing SSL object while validating Outline certificate')
+        der_cert = ssl_obj.getpeercert(binary_form=True)
+        fingerprint = hashlib.sha256(der_cert).hexdigest().lower()
+        if fingerprint != self.cert_sha256:
+            raise OutlineAPIError('Outline certificate fingerprint mismatch')
 
     async def create_access_key(self, key_name: str) -> OutlineKey:
         if not self.enabled:
@@ -64,7 +53,8 @@ class OutlineService:
             timeout = aiohttp.ClientTimeout(total=20)
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 try:
-                    async with session.post(create_url, ssl=self._fingerprint) as response:
+                    async with session.post(create_url, ssl=False) as response:
+                        await self._check_cert_fingerprint(response)
                         if response.status >= 400:
                             text = await response.text()
                             raise OutlineAPIError(f'Outline create key failed: {response.status} {text}')
@@ -76,7 +66,7 @@ class OutlineService:
                     async with session.put(
                         rename_url_template.format(key_id=key_id),
                         json={'name': key_name},
-                        ssl=self._fingerprint,
+                        ssl=False,
                     ) as response:
                         if response.status >= 400:
                             text = await response.text()
@@ -116,7 +106,8 @@ class OutlineService:
         timeout = aiohttp.ClientTimeout(total=20)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             try:
-                async with session.get(url, ssl=self._fingerprint) as response:
+                async with session.get(url, ssl=False) as response:
+                    await self._check_cert_fingerprint(response)
                     if response.status >= 400:
                         text = await response.text()
                         raise OutlineAPIError(f'Outline health check failed: {response.status} {text}')
@@ -145,7 +136,8 @@ class OutlineService:
         timeout = aiohttp.ClientTimeout(total=20)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             try:
-                async with session.delete(delete_url, ssl=self._fingerprint) as response:
+                async with session.delete(delete_url, ssl=False) as response:
+                    await self._check_cert_fingerprint(response)
                     if response.status >= 400:
                         text = await response.text()
                         logger.warning('Failed to delete Outline key %s: %s %s', key_id, response.status, text)
