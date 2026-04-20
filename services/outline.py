@@ -5,8 +5,6 @@ import hashlib
 import logging
 import ssl
 from dataclasses import dataclass
-from typing import Any
-
 import aiohttp
 
 logger = logging.getLogger(__name__)
@@ -34,12 +32,11 @@ class OutlineService:
 
     def _ssl_context(self) -> ssl.SSLContext:
         context = ssl.create_default_context()
-
-        def verify_cb(connection: ssl.SSLSocket, x509: Any, errno: int, depth: int, preverify_ok: bool) -> bool:
-            return preverify_ok
-
+        # Outline Manager commonly uses a self-signed certificate.
+        # We intentionally disable CA/hostname validation here and enforce trust
+        # via explicit SHA-256 certificate pinning in _check_cert_fingerprint().
         context.check_hostname = False
-        context.verify_mode = ssl.CERT_REQUIRED
+        context.verify_mode = ssl.CERT_NONE
         return context
 
     async def _check_cert_fingerprint(self, response: aiohttp.ClientResponse) -> None:
