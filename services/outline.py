@@ -20,6 +20,29 @@ class OutlineKey:
     name: str
 
 
+def _build_fingerprint(cert_sha256: str) -> aiohttp.Fingerprint:
+    raw = cert_sha256.strip()
+    lowered = raw.lower()
+    for prefix in ('sha256:', 'sha256/'):
+        if lowered.startswith(prefix):
+            raw = raw[len(prefix):]
+            break
+
+    hex_candidate = raw.replace(':', '').strip()
+    if len(hex_candidate) == 64:
+        try:
+            return aiohttp.Fingerprint(bytes.fromhex(hex_candidate))
+        except ValueError:
+            pass
+
+    # Outline Manager often provides certSha256 as base64.
+    try:
+        decoded = base64.b64decode(raw, validate=True)
+        return aiohttp.Fingerprint(decoded)
+    except Exception as exc:
+        raise OutlineAPIError('OUTLINE_API_CERT_SHA256 format is invalid') from exc
+
+
 class OutlineService:
     def __init__(self, api_url: str, cert_sha256: str) -> None:
         self.api_url = api_url.rstrip('/')
